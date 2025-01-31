@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -14,14 +15,16 @@ type WorkerPool struct {
 	workerCount int
 	wg          sync.WaitGroup
 	retryLimit  int
+	s3Logger    *storage.S3Logger
 }
 
 // NewWorkerPool initializes a new worker pool.
-func NewWorkerPool(workerCount int, retryLimit int) *WorkerPool {
+func NewWorkerPool(workerCount int, retryLimit int, s3Logger *storage.S3Logger) *WorkerPool {
 	return &WorkerPool{
 		taskQueue:   make(chan *storage.Task, 100),
 		workerCount: workerCount,
 		retryLimit:  retryLimit,
+		s3Logger:    s3Logger,
 	}
 }
 
@@ -43,12 +46,14 @@ func (wp *WorkerPool) Start() {
 
 			for task := range wp.taskQueue {
 				log.Printf("Worker %d executing task: %s", workerID, task.JobName)
-				success := wp.executeTaskWithRetry(task)
+				success, output := wp.executeTaskWithRetry(task)
 
 				if success {
 					log.Printf("Task completed successfully: %s", task.JobName)
+					wp.uploadLogToS3(task.JobName, output)
 				} else {
 					log.Printf("Task failed after retries: %s", task.JobName)
+					wp.uploadLogToS3(task.JobName, fmt.Sprintf("Task failed: %s", output))
 				}
 			}
 		}(i)
@@ -56,19 +61,30 @@ func (wp *WorkerPool) Start() {
 }
 
 // executeTaskWithRetry tries to execute a task and retries if it fails.
-func (wp *WorkerPool) executeTaskWithRetry(task *storage.Task) bool {
+func (wp *WorkerPool) executeTaskWithRetry(task *storage.Task) (bool, string) {
+	var output string
 	for attempt := 1; attempt <= wp.retryLimit; attempt++ {
 		log.Printf("Attempt %d to execute task: %s", attempt, task.JobName)
 
-		if err := executeCommand(task); err == nil {
-			return true // Task succeeded
+		out, err := executeCommand(task)
+		output = out
+		if err == nil {
+			return true, output // Task succeeded
 		}
 
 		log.Printf("Task failed on attempt %d: %s", attempt, task.JobName)
 		time.Sleep(2 * time.Second) // Backoff before retry
 	}
 
-	return false // Task failed after retries
+	return false, output // Task failed after retries
+}
+
+// uploadLogToS3 uploads the task output to S3.
+func (wp *WorkerPool) uploadLogToS3(taskName string, output string) {
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	filename := fmt.Sprintf("logs/%s/%s.log", taskName, timestamp)
+
+	wp.s3Logger.UploadLog(filename, output)
 }
 
 // Stop closes the task queue and waits for all workers to complete.

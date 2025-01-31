@@ -9,7 +9,7 @@ import (
 )
 
 type Scheduler struct {
-	workerPool   *WorkerPool
+	WorkerPool   *WorkerPool
 	db           *sql.DB
 	pollInterval time.Duration
 }
@@ -18,7 +18,7 @@ type Scheduler struct {
 func NewSchedulerWithDB(db *sql.DB, workerCount int, retryLimit int, pollInterval time.Duration) *Scheduler {
 	return &Scheduler{
 		db:           db,
-		workerPool:   NewWorkerPool(workerCount, retryLimit),
+		WorkerPool:   NewWorkerPool(workerCount, retryLimit, nil),
 		pollInterval: pollInterval,
 	}
 }
@@ -34,7 +34,7 @@ func (s *Scheduler) LoadTasksFromDB() {
 				log.Printf("Error fetching tasks: %v", err)
 			} else {
 				for _, task := range tasks {
-					s.workerPool.AddTask(&task)
+					s.WorkerPool.AddTask(&task)
 				}
 			}
 
@@ -46,11 +46,11 @@ func (s *Scheduler) LoadTasksFromDB() {
 // Start begins task processing using the worker pool.
 func (s *Scheduler) Start() {
 	log.Println("Starting Scheduler...")
-	go s.workerPool.Start() // Start the worker pool
+	go s.WorkerPool.Start() // Start the worker pool
 }
 
 // Stop stops the worker pool.
 func (s *Scheduler) Stop() {
-	s.workerPool.Stop()
+	s.WorkerPool.Stop()
 	log.Println("Scheduler stopped.")
 }
