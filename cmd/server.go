@@ -14,7 +14,7 @@ func main() {
 	defer db.Close()
 
 	// Initialize the scheduler with DB
-	s := scheduler.NewSchedulerWithDB(db)
+	s := scheduler.NewSchedulerWithDB(db, 5, 3)
 
 	// Load tasks from the database and start the scheduler
 	s.LoadTasksFromDB()
