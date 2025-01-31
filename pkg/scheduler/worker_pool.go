@@ -73,10 +73,20 @@ func (wp *WorkerPool) executeTaskWithRetry(task *storage.Task) (bool, string) {
 		}
 
 		log.Printf("Task failed on attempt %d: %s", attempt, task.JobName)
+		wp.logTaskFailure(task.JobName, attempt, err.Error())
 		time.Sleep(2 * time.Second) // Backoff before retry
 	}
 
 	return false, output // Task failed after retries
+}
+
+// logTaskFailure logs task failures with retry details and error messages.
+func (wp *WorkerPool) logTaskFailure(taskName string, attempt int, errorMsg string) {
+	logContent := fmt.Sprintf("Task: %s\nAttempt: %d\nError: %s\nTimestamp: %s\n\n",
+		taskName, attempt, errorMsg, time.Now().Format(time.RFC3339))
+
+	filename := fmt.Sprintf("failed_tasks/%s_%d.log", taskName, attempt)
+	wp.s3Logger.UploadLog(filename, logContent)
 }
 
 // uploadLogToS3 uploads the task output to S3.

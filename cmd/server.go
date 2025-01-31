@@ -4,6 +4,7 @@ import (
 	"github.com/shammishailaj/gronicle/api"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/shammishailaj/gronicle/pkg/scheduler"
@@ -11,6 +12,10 @@ import (
 )
 
 func main() {
+	serverPort := os.Getenv("SERVER_PORT")
+	if serverPort == "" {
+		serverPort = "9999"
+	}
 	log.Println("Starting Gronicle Server...")
 
 	// Connect to MySQL
@@ -35,8 +40,8 @@ func main() {
 	// Set up the API server
 	router := api.InitializeRouter(db, s3Logger)
 
-	log.Println("Starting API server on port 8080...")
-	log.Fatal(http.ListenAndServe(":9999", router))
+	log.Println("Starting API server on port %s...", serverPort)
+	log.Fatal(http.ListenAndServe(":"+serverPort, router))
 
 	// Keep the main process running
 	select {}

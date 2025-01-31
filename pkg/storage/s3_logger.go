@@ -3,12 +3,18 @@ package storage
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
+	"math"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
+
+// Max retries for S3 uploads
+const maxRetries = 3
 
 // S3Logger uploads logs to S3
 type S3Logger struct {
@@ -30,22 +36,59 @@ func NewS3Logger(bucket, region string) *S3Logger {
 	}
 }
 
-// UploadLog uploads a log to the specified S3 bucket
+// UploadLog retries S3 log upload with exponential backoff and falls back to local storage if all retries fail.
 func (l *S3Logger) UploadLog(filename string, content string) {
+	var err error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		log.Printf("Attempt %d to upload log to S3: %s", attempt, filename)
+
+		err = l.uploadToS3(filename, content)
+		if err == nil {
+			log.Printf("Successfully uploaded log to S3: %s", filename)
+			return
+		}
+
+		// Exponential backoff
+		wait := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+		log.Printf("Upload failed: %v. Retrying in %s...", err, wait)
+		time.Sleep(wait)
+	}
+
+	// All retries failed, fallback to local storage
+	log.Printf("Failed to upload log to S3 after %d attempts. Saving locally.", maxRetries)
+	l.saveLogLocally(filename, content)
+}
+
+// uploadToS3 performs the actual upload to S3.
+func (l *S3Logger) uploadToS3(filename string, content string) error {
 	_, err := l.client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket:      &l.bucket,
-		Key:         &filename,
-		Body:        bytes.NewReader([]byte(content)),
-		ContentType: awsString("text/plain"),
-		Metadata: map[string]string{
-			"Timestamp": time.Now().Format(time.RFC3339),
-		},
+		Bucket: &l.bucket,
+		Key:    &filename,
+		Body:   bytes.NewReader([]byte(content)),
 	})
-	if err != nil {
-		log.Printf("Failed to upload log to S3: %v", err)
+	return err
+}
+
+// saveLogLocally saves logs locally when S3 uploads fail.
+func (l *S3Logger) saveLogLocally(filename string, content string) {
+	localFilePath := fmt.Sprintf("local_logs/%s", filename)
+	if err := os.MkdirAll("local_logs", os.ModePerm); err != nil {
+		log.Printf("Failed to create local log directory: %v", err)
 		return
 	}
-	log.Printf("Successfully uploaded log to S3: %s", filename)
+
+	file, err := os.Create(localFilePath)
+	if err != nil {
+		log.Printf("Failed to create local log file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(content); err != nil {
+		log.Printf("Failed to write log content locally: %v", err)
+	} else {
+		log.Printf("Log saved locally: %s", localFilePath)
+	}
 }
 
 // Helper function to convert string to *string (since AWS SDK requires pointers)

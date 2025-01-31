@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -128,6 +129,25 @@ func GetTaskLogsHandler(s3Logger *storage.S3Logger) http.HandlerFunc {
 	}
 }
 
+// GetFailedLogsHandler lists locally stored logs for failed tasks.
+func GetFailedLogsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		files, err := os.ReadDir("local_logs")
+		if err != nil {
+			http.Error(w, "Failed to read local logs", http.StatusInternalServerError)
+			return
+		}
+
+		var logFiles []string
+		for _, file := range files {
+			logFiles = append(logFiles, file.Name())
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(logFiles)
+	}
+}
+
 // InitializeRouter sets up API routes.
 func InitializeRouter(db *sql.DB, s3Logger *storage.S3Logger) *mux.Router {
 	router := mux.NewRouter()
@@ -137,6 +157,7 @@ func InitializeRouter(db *sql.DB, s3Logger *storage.S3Logger) *mux.Router {
 	router.HandleFunc("/tasks/{id:[0-9]+}", GetTaskByIDHandler(db)).Methods("GET")
 	router.HandleFunc("/tasks/{id:[0-9]+}", DeleteTaskHandler(db)).Methods("DELETE")
 	router.HandleFunc("/logs/{task_id}", GetTaskLogsHandler(s3Logger)).Methods("GET")
+	router.HandleFunc("/failed_logs", GetFailedLogsHandler()).Methods("GET")
 
 	return router
 }
