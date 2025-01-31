@@ -1,9 +1,11 @@
 package main
 
 import (
+	"log"
+	"time"
+
 	"github.com/shammishailaj/gronicle/pkg/scheduler"
 	"github.com/shammishailaj/gronicle/pkg/storage"
-	"log"
 )
 
 func main() {
@@ -13,12 +15,14 @@ func main() {
 	db := storage.ConnectMySQL("scalland", "scallandpass", "localhost:3306", "gronicle")
 	defer db.Close()
 
-	// Initialize the scheduler with DB
-	s := scheduler.NewSchedulerWithDB(db, 5, 3)
+	// Initialize the scheduler with 5 workers, 3 retry attempts, and a 10-second polling interval
+	s := scheduler.NewSchedulerWithDB(db, 5, 3, 10*time.Second)
 
-	// Load tasks from the database and start the scheduler
+	// Start polling for new tasks
 	s.LoadTasksFromDB()
-	go s.Start()
+
+	// Start the scheduler
+	s.Start()
 
 	// Keep the main process running
 	select {}

@@ -3,33 +3,44 @@ package scheduler
 import (
 	"database/sql"
 	"log"
+	"time"
 
 	"github.com/shammishailaj/gronicle/pkg/storage"
 )
 
 type Scheduler struct {
-	db         *sql.DB
-	workerPool *WorkerPool
+	workerPool   *WorkerPool
+	db           *sql.DB
+	pollInterval time.Duration
 }
 
 // NewSchedulerWithDB initializes a scheduler with a database connection and worker pool.
-func NewSchedulerWithDB(db *sql.DB, workerCount int, retryLimit int) *Scheduler {
+func NewSchedulerWithDB(db *sql.DB, workerCount int, retryLimit int, pollInterval time.Duration) *Scheduler {
 	return &Scheduler{
-		db:         db,
-		workerPool: NewWorkerPool(workerCount, retryLimit),
+		db:           db,
+		workerPool:   NewWorkerPool(workerCount, retryLimit),
+		pollInterval: pollInterval,
 	}
 }
 
-// LoadTasksFromDB fetches tasks from MySQL and adds them to the worker pool.
+// LoadTasksFromDB continuously polls the database and adds pending tasks to the worker pool.
 func (s *Scheduler) LoadTasksFromDB() {
-	tasks, err := storage.FetchPendingTasks(s.db)
-	if err != nil {
-		log.Fatalf("Error fetching tasks from database: %v", err)
-	}
+	go func() {
+		for {
+			log.Println("Polling database for new tasks...")
 
-	for _, task := range tasks {
-		s.workerPool.AddTask(&task)
-	}
+			tasks, err := storage.FetchPendingTasks(s.db)
+			if err != nil {
+				log.Printf("Error fetching tasks: %v", err)
+			} else {
+				for _, task := range tasks {
+					s.workerPool.AddTask(&task)
+				}
+			}
+
+			time.Sleep(s.pollInterval) // Wait before polling again
+		}
+	}()
 }
 
 // Start begins task processing using the worker pool.
