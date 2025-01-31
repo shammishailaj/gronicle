@@ -1,35 +1,25 @@
 package main
 
 import (
-	"log"
-	"time"
-
 	"github.com/shammishailaj/gronicle/pkg/scheduler"
+	"github.com/shammishailaj/gronicle/pkg/storage"
+	"log"
 )
 
 func main() {
 	log.Println("Starting Gronicle Server...")
 
-	// Initialize the task scheduler
-	s := scheduler.NewScheduler()
+	// Connect to MySQL
+	db := storage.ConnectMySQL("scalland", "scallandpass", "localhost:3306", "gronicle")
+	defer db.Close()
 
-	// Example task: prints "Hello, Gronicle!" every 5 seconds
-	task1 := &scheduler.Task{
-		ID:   1,
-		Name: "HelloTask",
-		Execute: func() error {
-			log.Println("Hello, Gronicle! Task is running.")
-			return nil
-		},
-		Interval: 5 * time.Second,
-	}
+	// Initialize the scheduler with DB
+	s := scheduler.NewSchedulerWithDB(db)
 
-	// Add the task to the scheduler
-	s.AddTask(task1)
-
-	// Start the scheduler
+	// Load tasks from the database and start the scheduler
+	s.LoadTasksFromDB()
 	go s.Start()
 
-	// Keep the main process running for testing
+	// Keep the main process running
 	select {}
 }

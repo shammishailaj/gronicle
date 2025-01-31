@@ -8,7 +8,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // S3Logger uploads logs to S3
@@ -34,10 +33,10 @@ func NewS3Logger(bucket, region string) *S3Logger {
 // UploadLog uploads a log to the specified S3 bucket
 func (l *S3Logger) UploadLog(filename string, content string) {
 	_, err := l.client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: &l.bucket,
-		Key:    &filename,
-		Body:   bytes.NewReader([]byte(content)),
-		ContentType: &([]string{"text/plain"}[0]),
+		Bucket:      &l.bucket,
+		Key:         &filename,
+		Body:        bytes.NewReader([]byte(content)),
+		ContentType: awsString("text/plain"),
 		Metadata: map[string]string{
 			"Timestamp": time.Now().Format(time.RFC3339),
 		},
@@ -47,4 +46,9 @@ func (l *S3Logger) UploadLog(filename string, content string) {
 		return
 	}
 	log.Printf("Successfully uploaded log to S3: %s", filename)
+}
+
+// Helper function to convert string to *string (since AWS SDK requires pointers)
+func awsString(value string) *string {
+	return &value
 }

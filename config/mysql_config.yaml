@@ -1,6 +1,6 @@
 mysql:
   host: "localhost"
   port: 3306
-  user: "gronicle_user"
-  password: "gronicle_password"
-  database: "gronicle_db"
+  user: "scalland"
+  password: "scallandpass"
+  database: "gronicle"
