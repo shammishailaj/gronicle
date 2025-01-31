@@ -1,7 +1,9 @@
 package main
 
 import (
+	"github.com/shammishailaj/gronicle/api"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/shammishailaj/gronicle/pkg/scheduler"
@@ -29,6 +31,12 @@ func main() {
 
 	// Start the scheduler
 	s.Start()
+
+	// Set up the API server
+	router := api.InitializeRouter(db, s3Logger)
+
+	log.Println("Starting API server on port 8080...")
+	log.Fatal(http.ListenAndServe(":9999", router))
 
 	// Keep the main process running
 	select {}

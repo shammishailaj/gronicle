@@ -9,11 +9,14 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+// Task represents a task from the database.
 type Task struct {
-	ID       int
-	JobName  string
-	Command  string
-	Interval time.Duration
+	ID        int           `json:"id"`
+	JobName   string        `json:"job_name"`
+	Command   string        `json:"command"`
+	Interval  time.Duration `json:"interval_seconds"`
+	Status    string        `json:"status"`
+	CreatedAt string        `json:"created_at"`
 }
 
 // ConnectMySQL connects to the MySQL database
