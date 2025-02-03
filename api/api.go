@@ -162,6 +162,33 @@ func GetTaskMetricsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// GetEnhancedMetricsHandler handles GET requests to fetch enhanced metrics.
+func GetEnhancedMetricsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Fetch basic and enhanced metrics
+		basicMetrics, err := storage.FetchTaskMetrics(db)
+		if err != nil {
+			http.Error(w, "Failed to fetch basic metrics", http.StatusInternalServerError)
+			return
+		}
+
+		enhancedMetrics, err := storage.FetchEnhancedMetrics(db)
+		if err != nil {
+			http.Error(w, "Failed to fetch enhanced metrics", http.StatusInternalServerError)
+			return
+		}
+
+		// Combine basic and enhanced metrics
+		response := map[string]interface{}{
+			"basic_metrics":    basicMetrics,
+			"enhanced_metrics": enhancedMetrics,
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
 // InitializeRouter sets up API routes.
 func InitializeRouter(db *sql.DB, s3Logger *storage.S3Logger) *mux.Router {
 	router := mux.NewRouter()
@@ -173,6 +200,6 @@ func InitializeRouter(db *sql.DB, s3Logger *storage.S3Logger) *mux.Router {
 	router.HandleFunc("/logs/{task_id}", GetTaskLogsHandler(s3Logger)).Methods("GET")
 	router.HandleFunc("/failed_logs", GetFailedLogsHandler()).Methods("GET")
 	router.HandleFunc("/metrics", GetTaskMetricsHandler(db)).Methods("GET") // New endpoint for metrics
-
+	router.HandleFunc("/metrics/enhanced", GetEnhancedMetricsHandler(db)).Methods("GET")
 	return router
 }

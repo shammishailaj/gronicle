@@ -30,3 +30,12 @@ curl http://localhost:9999/logs/2
 # Retrieve locally stored logs (if S3 failed):
 
 curl http://localhost:9999/failed_logs
+
+# Request the tasks metrics:
+
+curl http://localhost:9999/metrics
+
+# Request the enhanced metrics:
+
+curl http://localhost:9999/metrics/enhanced
+

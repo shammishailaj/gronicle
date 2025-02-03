@@ -35,7 +35,7 @@ func main() {
 	s.LoadTasksFromDB()
 
 	// Start the scheduler
-	s.Start()
+	s.Start(db)
 
 	// Set up the API server
 	router := api.InitializeRouter(db, s3Logger)

@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"log"
+	"time"
 )
 
 // InsertTask inserts a new task into the database.
@@ -82,5 +83,52 @@ func FetchTaskMetrics(db *sql.DB) ([]TaskMetrics, error) {
 		}
 		metrics = append(metrics, metric)
 	}
+	return metrics, nil
+}
+
+// UpdateTaskExecution updates the task's execution timestamps and status.
+func UpdateTaskExecution(db *sql.DB, taskID int, startTime, endTime time.Time, status string) error {
+	query := `UPDATE tasks 
+        SET start_time = ?, end_time = ?, status = ? 
+        WHERE id = ?`
+
+	_, err := db.Exec(query, startTime, endTime, status, taskID)
+	if err != nil {
+		log.Printf("Failed to update task execution: %v", err)
+	}
+	return err
+}
+
+// FetchEnhancedMetrics retrieves average task duration and failures in the last 24 hours.
+func FetchEnhancedMetrics(db *sql.DB) (map[string]interface{}, error) {
+	metrics := make(map[string]interface{})
+
+	// Average task duration for completed tasks
+	queryAvgDuration := `
+        SELECT AVG(TIMESTAMPDIFF(SECOND, start_time, end_time)) 
+        FROM tasks 
+        WHERE status = 'completed' AND start_time IS NOT NULL AND end_time IS NOT NULL`
+
+	var avgDuration float64
+	if err := db.QueryRow(queryAvgDuration).Scan(&avgDuration); err != nil {
+		log.Printf("Failed to fetch average task duration: %v", err)
+		return nil, err
+	}
+	metrics["average_task_duration"] = avgDuration
+
+	// Count of failed tasks in the last 24 hours
+	queryFailures := `
+        SELECT COUNT(*) 
+        FROM tasks 
+        WHERE status = 'failed' 
+        AND start_time >= NOW() - INTERVAL 24 HOUR`
+
+	var failureCount int
+	if err := db.QueryRow(queryFailures).Scan(&failureCount); err != nil {
+		log.Printf("Failed to fetch task failures: %v", err)
+		return nil, err
+	}
+	metrics["failures_last_24_hours"] = failureCount
+
 	return metrics, nil
 }

@@ -44,9 +44,9 @@ func (s *Scheduler) LoadTasksFromDB() {
 }
 
 // Start begins task processing using the worker pool.
-func (s *Scheduler) Start() {
+func (s *Scheduler) Start(db *sql.DB) {
 	log.Println("Starting Scheduler...")
-	go s.WorkerPool.Start() // Start the worker pool
+	go s.WorkerPool.Start(db) // Start the worker pool
 }
 
 // Stop stops the worker pool.

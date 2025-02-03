@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"sync"
@@ -35,7 +36,7 @@ func (wp *WorkerPool) AddTask(task *storage.Task) {
 }
 
 // Start initializes the workers and begins processing tasks.
-func (wp *WorkerPool) Start() {
+func (wp *WorkerPool) Start(db *sql.DB) {
 	log.Printf("Starting %d workers...", wp.workerCount)
 
 	for i := 0; i < wp.workerCount; i++ {
@@ -46,7 +47,7 @@ func (wp *WorkerPool) Start() {
 
 			for task := range wp.taskQueue {
 				log.Printf("Worker %d executing task: %s", workerID, task.JobName)
-				success, output := wp.executeTaskWithRetry(task)
+				success, output := wp.executeTaskWithRetry(db, task)
 
 				if success {
 					log.Printf("Task completed successfully: %s", task.JobName)
@@ -60,8 +61,9 @@ func (wp *WorkerPool) Start() {
 	}
 }
 
-// executeTaskWithRetry tries to execute a task and retries if it fails.
-func (wp *WorkerPool) executeTaskWithRetry(task *storage.Task) (bool, string) {
+// executeTaskWithRetry tries to execute a task and retries if it fails and logs its execution duration.
+func (wp *WorkerPool) executeTaskWithRetry(db *sql.DB, task *storage.Task) (bool, string) {
+	startTime := time.Now() // Track start time
 	var output string
 	for attempt := 1; attempt <= wp.retryLimit; attempt++ {
 		log.Printf("Attempt %d to execute task: %s", attempt, task.JobName)
@@ -69,10 +71,12 @@ func (wp *WorkerPool) executeTaskWithRetry(task *storage.Task) (bool, string) {
 		out, err := executeCommand(task)
 		output = out
 		if err == nil {
+			wp.logTaskDuration(db, task.ID, startTime, time.Now(), "completed")
 			return true, output // Task succeeded
 		}
 
 		log.Printf("Task failed on attempt %d: %s", attempt, task.JobName)
+		wp.logTaskDuration(db, task.ID, startTime, time.Now(), "completed")
 		wp.logTaskFailure(task.JobName, attempt, err.Error())
 		time.Sleep(2 * time.Second) // Backoff before retry
 	}
@@ -87,6 +91,14 @@ func (wp *WorkerPool) logTaskFailure(taskName string, attempt int, errorMsg stri
 
 	filename := fmt.Sprintf("failed_tasks/%s_%d.log", taskName, attempt)
 	wp.s3Logger.UploadLog(filename, logContent)
+}
+
+// logTaskDuration updates the task's execution time and status in the database.
+func (wp *WorkerPool) logTaskDuration(db *sql.DB, taskID int, startTime, endTime time.Time, status string) {
+	err := storage.UpdateTaskExecution(db, taskID, startTime, endTime, status)
+	if err != nil {
+		log.Printf("Failed to log task execution for task %d: %v", taskID, err)
+	}
 }
 
 // uploadLogToS3 uploads the task output to S3.
