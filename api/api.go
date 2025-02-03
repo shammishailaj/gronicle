@@ -148,6 +148,20 @@ func GetFailedLogsHandler() http.HandlerFunc {
 	}
 }
 
+// GetTaskMetricsHandler handles GET requests to fetch task status counts.
+func GetTaskMetricsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		metrics, err := storage.FetchTaskMetrics(db)
+		if err != nil {
+			http.Error(w, "Failed to fetch metrics", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(metrics)
+	}
+}
+
 // InitializeRouter sets up API routes.
 func InitializeRouter(db *sql.DB, s3Logger *storage.S3Logger) *mux.Router {
 	router := mux.NewRouter()
@@ -158,6 +172,7 @@ func InitializeRouter(db *sql.DB, s3Logger *storage.S3Logger) *mux.Router {
 	router.HandleFunc("/tasks/{id:[0-9]+}", DeleteTaskHandler(db)).Methods("DELETE")
 	router.HandleFunc("/logs/{task_id}", GetTaskLogsHandler(s3Logger)).Methods("GET")
 	router.HandleFunc("/failed_logs", GetFailedLogsHandler()).Methods("GET")
+	router.HandleFunc("/metrics", GetTaskMetricsHandler(db)).Methods("GET") // New endpoint for metrics
 
 	return router
 }

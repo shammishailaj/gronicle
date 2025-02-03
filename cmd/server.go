@@ -23,7 +23,7 @@ func main() {
 	defer db.Close()
 
 	// Initialize the S3 logger
-	s3Logger := storage.NewS3Logger("gronicle-logs", "us-east-1")
+	s3Logger := storage.NewS3Logger("gronicle-logs", "ap-south-1")
 
 	// Initialize the scheduler with 5 workers, 3 retry attempts, and a 10-second polling interval
 	s := scheduler.NewSchedulerWithDB(db, 5, 3, 10*time.Second)

@@ -54,3 +54,33 @@ func DeleteTask(db *sql.DB, id int) error {
 	_, err := db.Exec(query, id)
 	return err
 }
+
+type TaskMetrics struct {
+	Status string `json:"status"`
+	Count  int    `json:"count"`
+}
+
+// FetchTaskMetrics retrieves the count of tasks grouped by their status.
+func FetchTaskMetrics(db *sql.DB) ([]TaskMetrics, error) {
+	query := `
+        SELECT status, COUNT(*) AS count 
+        FROM tasks 
+        GROUP BY status`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		log.Printf("Failed to fetch task metrics: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var metrics []TaskMetrics
+	for rows.Next() {
+		var metric TaskMetrics
+		if err := rows.Scan(&metric.Status, &metric.Count); err != nil {
+			return nil, err
+		}
+		metrics = append(metrics, metric)
+	}
+	return metrics, nil
+}
