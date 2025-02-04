@@ -189,6 +189,27 @@ func GetEnhancedMetricsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// GetTaskMetricsHandlerV2 handles GET requests to fetch all metrics for a task (system + process).
+func GetTaskMetricsHandlerV2(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		taskID, err := strconv.Atoi(mux.Vars(r)["task_id"])
+		if err != nil {
+			http.Error(w, "Invalid task ID", http.StatusBadRequest)
+			return
+		}
+
+		// Fetch system metrics and per-process metrics
+		metrics, err := storage.FetchTaskMetricsV2(db, taskID)
+		if err != nil {
+			http.Error(w, "Failed to fetch task metrics", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(metrics)
+	}
+}
+
 // InitializeRouter sets up API routes.
 func InitializeRouter(db *sql.DB, s3Logger *storage.S3Logger) *mux.Router {
 	router := mux.NewRouter()
@@ -201,5 +222,6 @@ func InitializeRouter(db *sql.DB, s3Logger *storage.S3Logger) *mux.Router {
 	router.HandleFunc("/failed_logs", GetFailedLogsHandler()).Methods("GET")
 	router.HandleFunc("/metrics", GetTaskMetricsHandler(db)).Methods("GET") // New endpoint for metrics
 	router.HandleFunc("/metrics/enhanced", GetEnhancedMetricsHandler(db)).Methods("GET")
+	router.HandleFunc("/tasks/{task_id:[0-9]+}/metrics", GetTaskMetricsHandlerV2(db)).Methods("GET")
 	return router
 }

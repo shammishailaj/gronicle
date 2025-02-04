@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"github.com/shammishailaj/gronicle/pkg/monitor"
 	"log"
 	"time"
 )
@@ -86,6 +87,30 @@ func FetchTaskMetrics(db *sql.DB) ([]TaskMetrics, error) {
 	return metrics, nil
 }
 
+// FetchTaskMetrics retrieves metrics for a specific task from the database.
+func FetchTaskMetricsV2(db *sql.DB, taskID int) ([]monitor.TaskMetrics, error) {
+	query := `SELECT cpu_usage, ram_usage, disk_usage, load_average, gpu_usage, recorded_at 
+        FROM task_metrics 
+        WHERE task_id = ?`
+
+	rows, err := db.Query(query, taskID)
+	if err != nil {
+		log.Printf("Failed to fetch metrics for task %d: %v", taskID, err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var metrics []monitor.TaskMetrics
+	for rows.Next() {
+		var metric monitor.TaskMetrics
+		if err := rows.Scan(&metric.CPUUsage, &metric.RAMUsage, &metric.DiskUsage, &metric.LoadAverage, &metric.GPUUsage, &metric.RecordedAt); err != nil {
+			return nil, err
+		}
+		metrics = append(metrics, metric)
+	}
+	return metrics, nil
+}
+
 // UpdateTaskExecution updates the task's execution timestamps and status.
 func UpdateTaskExecution(db *sql.DB, taskID int, startTime, endTime time.Time, status string) error {
 	query := `UPDATE tasks 
@@ -131,4 +156,29 @@ func FetchEnhancedMetrics(db *sql.DB) (map[string]interface{}, error) {
 	metrics["failures_last_24_hours"] = failureCount
 
 	return metrics, nil
+}
+
+// InsertTaskMetrics stores the collected metrics for a task execution.
+func InsertTaskMetrics(db *sql.DB, taskID int, metrics monitor.TaskMetrics) error {
+	query := `
+        INSERT INTO task_metrics (task_id, cpu_usage, ram_usage, disk_usage, load_average, gpu_usage, recorded_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)`
+
+	_, err := db.Exec(query, taskID, metrics.CPUUsage, metrics.RAMUsage, metrics.DiskUsage, metrics.LoadAverage, metrics.GPUUsage, metrics.RecordedAt)
+	if err != nil {
+		log.Printf("Failed to insert task metrics for task %d: %v", taskID, err)
+	}
+	return err
+}
+
+// InsertProcessTaskMetrics stores per-process metrics for a task execution.
+func InsertProcessTaskMetrics(db *sql.DB, taskID int, metrics monitor.ProcessMetrics) error {
+	query := `INSERT INTO task_metrics (task_id, cpu_usage, ram_usage, disk_usage, recorded_at) 
+        VALUES (?, ?, ?, ?, ?)`
+
+	_, err := db.Exec(query, taskID, metrics.CPUUsage, metrics.RAMUsage, metrics.DiskUsage, metrics.RecordedAt)
+	if err != nil {
+		log.Printf("Failed to insert process metrics for task %d: %v", taskID, err)
+	}
+	return err
 }

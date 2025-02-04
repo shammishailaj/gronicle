@@ -39,3 +39,8 @@ curl http://localhost:9999/metrics
 
 curl http://localhost:9999/metrics/enhanced
 
+
+# Retrieve the task metrics:
+
+curl http://localhost:8080/tasks/15/metrics
+

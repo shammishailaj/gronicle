@@ -3,6 +3,7 @@ package scheduler
 import (
 	"database/sql"
 	"fmt"
+	"github.com/shammishailaj/gronicle/pkg/monitor"
 	"log"
 	"sync"
 	"time"
@@ -64,22 +65,85 @@ func (wp *WorkerPool) Start(db *sql.DB) {
 // executeTaskWithRetry tries to execute a task and retries if it fails and logs its execution duration.
 func (wp *WorkerPool) executeTaskWithRetry(db *sql.DB, task *storage.Task) (bool, string) {
 	startTime := time.Now() // Track start time
-	var output string
+
+	// Collect pre-execution system metrics
+	preMetrics := monitor.CollectMetrics()
+	log.Printf("Pre-execution metrics for task %d: %+v", task.ID, preMetrics)
+	insertTaskMetricsErr := storage.InsertTaskMetrics(db, task.ID, preMetrics)
+	if insertTaskMetricsErr != nil {
+		log.Printf("scheduler.WorkerPool.executeTaskWithRetry: failed to insert task metrics: %s", insertTaskMetricsErr.Error())
+	}
+
+	// Attempt to execute the task and track its process
+	var (
+		output             string
+		inExecutionMetrics []monitor.ProcessMetrics
+		outputErr          error
+	)
+
 	for attempt := 1; attempt <= wp.retryLimit; attempt++ {
 		log.Printf("Attempt %d to execute task: %s", attempt, task.JobName)
 
-		out, err := executeCommand(task)
-		output = out
-		if err == nil {
-			wp.logTaskDuration(db, task.ID, startTime, time.Now(), "completed")
-			return true, output // Task succeeded
+		// Start the task and get its PID
+		output, inExecutionMetrics, outputErr = executeCommand(task)
+
+		// Collect system metrics after execution
+		metrics := monitor.CollectMetrics()
+		insertTaskMetricsErr = storage.InsertTaskMetrics(db, task.ID, metrics)
+
+		if insertTaskMetricsErr != nil {
+			log.Printf("scheduler.WorkerPool.executeTaskWithRetry: failed to insert task metrics: %s", insertTaskMetricsErr.Error())
 		}
 
-		log.Printf("Task failed on attempt %d: %s", attempt, task.JobName)
 		wp.logTaskDuration(db, task.ID, startTime, time.Now(), "completed")
-		wp.logTaskFailure(task.JobName, attempt, err.Error())
+
+		if outputErr == nil {
+			// Collect post-execution system metrics
+			postMetrics := monitor.CollectMetrics()
+			log.Printf("Post-execution metrics for task %d: %+v", task.ID, postMetrics)
+
+			// Store in-execution and post-execution metrics
+			for _, metric := range inExecutionMetrics {
+				insertProcessMetricsErr := storage.InsertProcessTaskMetrics(db, task.ID, metric)
+				if insertProcessMetricsErr != nil {
+					log.Printf("scheduler.WorkerPool.executeTaskWithRetry: failed to insert process metrics: %s", insertProcessMetricsErr.Error())
+				}
+			}
+
+			insertTaskMetricsErr = storage.InsertTaskMetrics(db, task.ID, postMetrics)
+			if insertTaskMetricsErr != nil {
+				log.Printf("scheduler.WorkerPool.executeTaskWithRetry: failed to insert task metrics: %s", insertTaskMetricsErr.Error())
+			}
+
+			wp.logTaskDuration(db, task.ID, startTime, time.Now(), "completed")
+			return true, string(output) // Task succeeded
+		}
+
+		log.Printf("Task failed on attempt %d: %s, error: %s", attempt, task.JobName, outputErr.Error())
+
+		// Collect post-execution metrics after failure
+		postFailureMetrics := monitor.CollectMetrics()
+		log.Printf("Post-failure metrics for task %d: %+v", task.ID, postFailureMetrics)
+
+		insertTaskMetricsErr = storage.InsertTaskMetrics(db, task.ID, postFailureMetrics)
+		if insertTaskMetricsErr != nil {
+			log.Printf("scheduler.WorkerPool.executeTaskWithRetry: failed to insert task metrics: %s", insertTaskMetricsErr.Error())
+		}
+
+		wp.logTaskDuration(db, task.ID, startTime, time.Now(), "failed")
+		wp.logTaskFailure(task.JobName, attempt, outputErr.Error())
 		time.Sleep(2 * time.Second) // Backoff before retry
 	}
+
+	// Collect post-execution metrics after failure
+	postFailureMetrics := monitor.CollectMetrics()
+	log.Printf("Post-failure metrics for task %d: %+v", task.ID, postFailureMetrics)
+	insertTaskMetricsErr = storage.InsertTaskMetrics(db, task.ID, postFailureMetrics)
+	if insertTaskMetricsErr != nil {
+		log.Printf("scheduler.WorkerPool.executeTaskWithRetry: failed to insert task metrics: %s", insertTaskMetricsErr.Error())
+	}
+
+	wp.logTaskDuration(db, task.ID, startTime, time.Now(), "failed")
 
 	return false, output // Task failed after retries
 }
